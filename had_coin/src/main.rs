@@ -3,8 +3,8 @@ use blockchain::*;
 
 use chrono::*;
 use actix_web::{App, get, post, HttpServer, Responder, HttpResponse, services, web::{Data, self}};
-use std::sync::Mutex;
-
+use std::{sync::Mutex, collections::HashSet};
+use serde_json::{json, Value};
 
 
 #[get("/mine_block")]
@@ -17,8 +17,8 @@ async fn mine_block(blockchain: Data<Mutex<Blockchain>>, node_address: Data<Mute
     let previous_hash=blockchain.clone().hash(previous_block);
 
     let transaction = blockchain.clone().add_transaction(node_address.clone().node_address, "miner".to_string(), 1);
-  
-    let new_block = blockchain::Blockchain::create_block(blockchain::Blockchain { chain: blockchain.chain.clone() }, proof, previous_hash, transaction);
+    let new_block = blockchain.clone().create_block(proof, previous_hash, transaction);
+   
     blockchain.chain.push(new_block.clone());
     HttpResponse::Ok().body(format!("new block mined: {}", serde_json::to_string(&new_block).unwrap()))
 }
@@ -26,8 +26,11 @@ async fn mine_block(blockchain: Data<Mutex<Blockchain>>, node_address: Data<Mute
 #[get("/get_chain")]
 async fn get_chain(blockchain: Data<Mutex<Blockchain>>) -> impl Responder {
     let blockchain = blockchain.lock().unwrap();
-    let res = blockchain.chain.iter().map(|chain|{ serde_json::to_string_pretty(&chain).unwrap() }).collect::<String>();
-    HttpResponse::Ok().body(res)
+    HttpResponse::Ok().json(
+        json!({
+            "chain": blockchain.clone().chain,
+        })
+    )
 }
 
 #[get("/is_valid_chain")]
@@ -55,6 +58,42 @@ async fn add_transaction(blockchain: Data<Mutex<Blockchain>>, transaction_data:w
     HttpResponse::Ok().body(format!( "Transaction added to block index: {}",index+1 ))
 }
 
+#[post("/connect_node")]
+async fn connect_node(blockchain: Data<Mutex<Blockchain>>, node: web::Json<Nodes>) -> impl Responder {
+    let mut blockchain= blockchain.lock().unwrap();
+    let node =&node.nodes;
+    
+    if node.len()>0{
+        blockchain.node=node.to_owned();
+        println!("{:?}", blockchain.node);
+        HttpResponse::Ok().body(format!( "failed to add node"))
+    }
+    else{
+        HttpResponse::Ok().body(format!( "Node added"))
+    }
+    
+}
+
+#[post("/replace_chain")]
+async fn replace_chain(blockchain: Data<Mutex<Blockchain>>) -> impl Responder {
+    let mut blockchain= blockchain.lock().unwrap();
+    let network=blockchain.clone().node;
+    let chain_len = blockchain.chain.len();
+    let client = reqwest::Client::new();
+    for node in network{
+        let response = client.get(format!("{}/get_chain", node)).send().await.unwrap();
+        let chain:Value = response.json().await.unwrap();
+        let other_chain_len = chain.get("chain").unwrap().as_array().unwrap().len();
+        if other_chain_len>chain_len{
+            // under development
+        }
+    }
+    blockchain.clone().replace_chain();
+
+    HttpResponse::Ok().body(format!( "Node added"))
+    
+}
+
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -66,13 +105,14 @@ async fn main() -> std::io::Result<()> {
         previous_hash:"0".to_owned(),
         transaction: vec![]
     };
-    let data = Data::new(Mutex::new(Blockchain{ chain: vec![block.clone()] }));
+    let node:HashSet<String>=HashSet::new();
+    let data = Data::new(Mutex::new(Blockchain{ chain: vec![block.clone()], node:node }));
     let node_address = Data::new(Mutex::new(NodeAddress{node_address:node_address }));
     HttpServer::new(move|| {
         App::new()
         .app_data(Data::clone(&data))
         .app_data(node_address.clone())
-        .service(services![ mine_block, get_chain, is_valid_chain, add_transaction]) 
+        .service(services![ mine_block, get_chain, is_valid_chain, add_transaction, connect_node, replace_chain]) 
     })
     .bind(("127.0.0.1", 8080))?
     .run()

@@ -8,6 +8,11 @@ pub struct NodeAddress{
     pub node_address:String
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Nodes{
+    pub nodes:HashSet<String>
+}
+
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Transaction{
@@ -28,6 +33,7 @@ pub struct Block{
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Blockchain{
     pub chain: Vec<Block>,
+    pub node: HashSet<String>
 }
 impl Blockchain{
     pub fn create_block(mut self, proof:u64, previous_hash:String, transaction:Transaction) -> Block{
@@ -114,6 +120,12 @@ impl Blockchain{
         };
         transaction
     }
+    pub fn replace_chain(self){
+    }
+
+   
     
 
 }
+
+
