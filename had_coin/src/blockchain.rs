@@ -33,7 +33,6 @@ pub struct Block{
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Blockchain{
     pub chain: Vec<Block>,
-    pub node: HashSet<String>
 }
 impl Blockchain{
     pub fn create_block(mut self, proof:u64, previous_hash:String, transaction:Transaction) -> Block{
